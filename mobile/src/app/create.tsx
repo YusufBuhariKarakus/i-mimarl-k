@@ -2,22 +2,17 @@ import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Button } from '../components/Button';
 import { Chip } from '../components/Chip';
 import { track } from '../lib/analytics';
 import { ApiError, redesignRoom } from '../lib/api';
 import { ROOMS, STYLES, type RoomId, type StyleId } from '../lib/catalog';
+import { normalizePhoto, type Photo } from '../lib/normalizePhoto';
 import { setLastResult } from '../lib/session';
 import { colors, radius, space } from '../lib/theme';
 import { useWallet } from '../lib/wallet';
-
-interface Photo {
-  uri: string;
-  base64: string;
-  mimeType: string;
-}
 
 const PICKER_OPTIONS: ImagePicker.ImagePickerOptions = {
   mediaTypes: ['images'],
@@ -31,24 +26,34 @@ export default function Create() {
   const [room, setRoom] = useState<RoomId>('living');
   const [style, setStyle] = useState<StyleId>('modern');
   const [loading, setLoading] = useState(false);
+  // Hatalar ekranda gösterilir: Alert web'de (ve web demosunda) görünmez.
+  const [error, setError] = useState<string | null>(null);
 
   async function pick(source: 'camera' | 'library') {
-    const permission =
-      source === 'camera'
-        ? await ImagePicker.requestCameraPermissionsAsync()
-        : await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      Alert.alert('İzin gerekli', 'Devam etmek için ayarlardan izin verin.');
-      return;
+    setError(null);
+    try {
+      const permission =
+        source === 'camera'
+          ? await ImagePicker.requestCameraPermissionsAsync()
+          : await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        setError('Fotoğraf seçmek için izin gerekli. Ayarlardan izin verip tekrar deneyin.');
+        return;
+      }
+      const result =
+        source === 'camera'
+          ? await ImagePicker.launchCameraAsync(PICKER_OPTIONS)
+          : await ImagePicker.launchImageLibraryAsync(PICKER_OPTIONS);
+      const asset = result.assets?.[0];
+      if (result.canceled || !asset) return;
+      if (!asset.base64) throw new Error('Fotoğraf okunamadı. Lütfen başka bir fotoğraf deneyin.');
+      setPhoto(
+        await normalizePhoto({ uri: asset.uri, base64: asset.base64, mimeType: asset.mimeType ?? 'image/jpeg' }),
+      );
+      track('photo_selected', { source });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Fotoğraf yüklenemedi.');
     }
-    const result =
-      source === 'camera'
-        ? await ImagePicker.launchCameraAsync(PICKER_OPTIONS)
-        : await ImagePicker.launchImageLibraryAsync(PICKER_OPTIONS);
-    const asset = result.assets?.[0];
-    if (result.canceled || !asset?.base64) return;
-    setPhoto({ uri: asset.uri, base64: asset.base64, mimeType: asset.mimeType ?? 'image/jpeg' });
-    track('photo_selected', { source });
   }
 
   function selectStyle(id: StyleId) {
@@ -67,6 +72,7 @@ export default function Create() {
     }
     if (!photo) return;
     setLoading(true);
+    setError(null);
     track('generate_started', { room, style });
     try {
       const res = await redesignRoom({
@@ -89,7 +95,7 @@ export default function Create() {
       }
       const message = e instanceof Error ? e.message : 'Bilinmeyen hata';
       track('generate_failed', { message });
-      Alert.alert('Tasarım oluşturulamadı', message);
+      setError(`Tasarım oluşturulamadı: ${message}`);
     } finally {
       setLoading(false);
     }
@@ -136,6 +142,7 @@ export default function Create() {
         // Hak bittiyse fotoğraf olmadan da tıklanabilir: ödeme ekranına götürür.
         disabled={!photo && wallet.canGenerate}
       />
+      {error && <Text style={styles.error}>{error}</Text>}
       {loading && <Text style={styles.hint}>Yeni odan hazırlanıyor, bu 20–30 saniye sürebilir…</Text>}
     </ScrollView>
   );
@@ -151,4 +158,5 @@ const styles = StyleSheet.create({
   label: { fontSize: 16, fontWeight: '600', color: colors.text, marginTop: space.sm },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
   hint: { textAlign: 'center', color: colors.muted },
+  error: { textAlign: 'center', color: colors.danger, fontWeight: '600' },
 });

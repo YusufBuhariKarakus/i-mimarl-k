@@ -6,6 +6,7 @@ import { Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-nati
 import { Button } from '../components/Button';
 import { track } from '../lib/analytics';
 import { STYLES } from '../lib/catalog';
+import { DEMO } from '../lib/demo';
 import { getLastResult } from '../lib/session';
 import { colors, radius, space } from '../lib/theme';
 
@@ -47,6 +48,13 @@ export default function Result() {
         <Text style={styles.caption}>{showBefore ? 'Önce' : `Sonra · ${styleName}`} — karşılaştırmak için basılı tut</Text>
       </Pressable>
 
+      {DEMO && (
+        <Text style={styles.demo}>
+          Demo sürüm: yapay zekâ henüz bağlı değil, bu yüzden fotoğrafın değiştirilmeden gösteriliyor. Gerçek
+          uygulamada burada odanın seçtiğin stilde yeniden tasarlanmış hali çıkar.
+        </Text>
+      )}
+
       {result.watermarked && (
         <Pressable style={styles.banner} onPress={() => router.push({ pathname: '/paywall', params: { trigger: 'watermark' } })}>
           <Text style={styles.bannerText}>Filigransız HD indirme ve 6 premium stil için Pro’ya geç →</Text>
@@ -72,6 +80,15 @@ export default function Result() {
 const styles = StyleSheet.create({
   container: { padding: space.md, gap: space.md },
   image: { width: '100%', aspectRatio: 4 / 3, borderRadius: radius.md, backgroundColor: colors.border },
+  demo: {
+    backgroundColor: colors.surface,
+    borderColor: colors.primary,
+    borderWidth: 1,
+    borderRadius: radius.md,
+    padding: space.md,
+    color: colors.text,
+    lineHeight: 20,
+  },
   caption: { textAlign: 'center', color: colors.muted, marginTop: space.xs },
   banner: { backgroundColor: colors.accent, borderRadius: radius.md, padding: space.md },
   bannerText: { color: '#FFFFFF', fontWeight: '600' },

@@ -64,6 +64,7 @@ export async function demoRedesign(req: RedesignRequest): Promise<RedesignRespon
   if (!before.isPro) state.used++;
   await new Promise((r) => setTimeout(r, 1500));
   const source = `data:${req.mimeType};base64,${req.imageBase64}`;
-  const imageUrl = before.hasPaid ? source : await watermark(source);
+  // Filigran basılamazsa (eski tarayıcı vb.) tasarımı yine de göster.
+  const imageUrl = before.hasPaid ? source : await watermark(source).catch(() => source);
   return { imageUrl, watermarked: !before.hasPaid, wallet: wallet() };
 }
