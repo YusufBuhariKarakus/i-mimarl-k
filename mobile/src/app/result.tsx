@@ -26,8 +26,13 @@ export default function Result() {
 
   async function share() {
     // Paylaşımlar ücretsiz büyüme kanalı: filigran ve uygulama linki birlikte gider.
-    await Share.share({ message: `OdaAI ile odamı ${styleName} stilde yeniden tasarladım! ${result!.afterUrl}` });
-    track('result_saved', { method: 'share' });
+    const link = result!.afterUrl.startsWith('http') ? ` ${result!.afterUrl}` : '';
+    try {
+      await Share.share({ message: `OdaAI ile odamı ${styleName} stilde yeniden tasarladım!${link}` });
+      track('result_saved', { method: 'share' });
+    } catch {
+      // Paylaşım desteklenmiyor (ör. bazı tarayıcılar) ya da kullanıcı vazgeçti.
+    }
   }
 
   return (

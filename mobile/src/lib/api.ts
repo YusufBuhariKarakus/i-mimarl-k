@@ -1,6 +1,7 @@
 import Constants from 'expo-constants';
 
 import type { RoomId, StyleId } from './catalog';
+import { DEMO, DemoPaymentError, demoRedesign, demoSync, demoWallet } from './demo';
 
 const API_URL: string = Constants.expoConfig?.extra?.apiUrl ?? 'http://localhost:8787';
 
@@ -37,11 +38,13 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export function fetchWallet(deviceId: string) {
+  if (DEMO) return demoWallet();
   return request<ServerWallet>(`/v1/wallet?deviceId=${encodeURIComponent(deviceId)}`);
 }
 
 // Satın alma ya da geri yükleme sonrası sunucunun hakları yeniden okumasını sağlar.
 export function syncPurchase(deviceId: string, productId?: string) {
+  if (DEMO) return demoSync(productId);
   return request<ServerWallet>('/v1/purchases/sync', {
     method: 'POST',
     body: JSON.stringify({ deviceId, productId }),
@@ -63,6 +66,11 @@ export interface RedesignResponse {
 }
 
 export function redesignRoom(req: RedesignRequest) {
+  if (DEMO) {
+    return demoRedesign(req).catch((e) => {
+      throw e instanceof DemoPaymentError ? new ApiError(402, e.message) : e;
+    });
+  }
   return request<RedesignResponse>('/v1/redesign', { method: 'POST', body: JSON.stringify(req) });
 }
 
@@ -75,5 +83,6 @@ export interface DesignerLead {
 }
 
 export async function submitDesignerLead(lead: DesignerLead): Promise<void> {
+  if (DEMO) return;
   await request('/v1/designer-leads', { method: 'POST', body: JSON.stringify(lead) });
 }

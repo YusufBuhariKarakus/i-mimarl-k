@@ -40,3 +40,7 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# demo derlemesi
+dist-demo/
+odaai-demo.html

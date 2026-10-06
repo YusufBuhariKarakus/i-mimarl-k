@@ -86,6 +86,17 @@ development build'de (`npx eas-cli@latest build --profile development`) denenir.
 2. RevenueCat'te bu ürünleri ekleyin ve iki aboneliği `pro` entitlement'ına bağlayın.
 3. Public SDK anahtarlarını mobil, secret anahtarı sunucu ortamına yazın.
 
+## Tıklanabilir web demosu
+
+Sunucu olmadan tarayıcıda açılan tek dosyalık tanıtım sürümü (ödeme sahte,
+görsel üretilmez; yüklenen fotoğraf filigranlı olarak geri döner):
+
+```bash
+cd mobile
+EXPO_PUBLIC_DEMO=1 npx expo export --platform web --output-dir dist-demo
+node scripts/build-demo.mjs dist-demo odaai-demo.html
+```
+
 ## Yayından önce yapılacaklar
 
 - [ ] Görsel modelini seçip kalite testi yapmak (`server/src/generate.ts`)
