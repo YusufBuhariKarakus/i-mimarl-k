@@ -20,6 +20,9 @@ const ROOM_PROMPTS: Record<string, string> = {
   kids: 'kids room',
 };
 
+// Ödeme yapmamış kullanıcıların kullanabildiği stiller (mobil `catalog.ts` → premium: false).
+export const FREE_STYLES = new Set(['modern', 'scandinavian']);
+
 export function isValidStyle(style: string) {
   return style in STYLE_PROMPTS;
 }

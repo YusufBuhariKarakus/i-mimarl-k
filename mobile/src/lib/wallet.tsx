@@ -1,49 +1,48 @@
 // Kullanıcının hakları: kredi bakiyesi ve Pro abonelik durumu.
 //
-// MVP'de cihazda tutulur. Üretimde gerçek kaynak RevenueCat entitlement'ları
-// ve sunucudaki kredi bakiyesi olmalı; aksi halde bakiye istemciden
-// manipüle edilebilir (sunucu tarafı ücretsiz kotayı zaten ayrıca uygular).
+// Doğru kaynak sunucudur (RevenueCat + kullanım kaydı). Cihazda yalnızca
+// kalıcı cihaz kimliği ve çevrimdışı açılış için son bilinen bakiye tutulur.
 
 import * as SecureStore from 'expo-secure-store';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 
-import { FREE_CREDITS } from './catalog';
+import { fetchWallet, syncPurchase, type ServerWallet } from './api';
 import { purchases } from './purchases';
 
-const STORAGE_KEY = 'odaai.wallet.v1';
+const STORAGE_KEY = 'odaai.wallet.v2';
 
-interface WalletState {
+interface Stored extends ServerWallet {
   deviceId: string;
-  credits: number;
-  isPro: boolean;
-  // Herhangi bir satın alma yapıldıysa: filigran kalkar, premium stiller açılır.
-  hasPaid: boolean;
 }
 
-interface Wallet extends WalletState {
+interface Wallet extends Stored {
   ready: boolean;
   canGenerate: boolean;
-  consumeCredit(): void;
+  // Sunucudan gelen güncel bakiyeyi uygular (ör. üretim yanıtından).
+  apply(wallet: ServerWallet): void;
+  refresh(): Promise<void>;
   buy(productId: string): Promise<void>;
   restore(): Promise<void>;
 }
 
 const WalletContext = createContext<Wallet | null>(null);
 
+const EMPTY: Stored = { deviceId: '', credits: 0, isPro: false, hasPaid: false };
+
 function newDeviceId() {
   return `dev_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
 }
 
-async function load(): Promise<WalletState | null> {
+async function load(): Promise<Stored | null> {
   try {
     const raw = await SecureStore.getItemAsync(STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as WalletState) : null;
+    return raw ? (JSON.parse(raw) as Stored) : null;
   } catch {
     return null;
   }
 }
 
-async function save(state: WalletState) {
+async function save(state: Stored) {
   try {
     await SecureStore.setItemAsync(STORAGE_KEY, JSON.stringify(state));
   } catch {
@@ -52,48 +51,59 @@ async function save(state: WalletState) {
 }
 
 export function WalletProvider({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<WalletState>({ deviceId: '', credits: 0, isPro: false, hasPaid: false });
+  const [state, setState] = useState<Stored>(EMPTY);
   const [ready, setReady] = useState(false);
 
-  useEffect(() => {
-    load().then((stored) => {
-      setState(stored ?? { deviceId: newDeviceId(), credits: FREE_CREDITS, isPro: false, hasPaid: false });
-      setReady(true);
-    });
+  const apply = useCallback((w: ServerWallet) => {
+    setState((s) => ({ ...s, isPro: w.isPro, hasPaid: w.hasPaid, credits: w.credits }));
   }, []);
+
+  useEffect(() => {
+    (async () => {
+      const stored = (await load()) ?? { ...EMPTY, deviceId: newDeviceId() };
+      purchases.configure(stored.deviceId);
+      setState(stored);
+      setReady(true);
+      try {
+        apply(await fetchWallet(stored.deviceId));
+      } catch {
+        // Çevrimdışı: son bilinen bakiyeyle devam; sunucu üretimde yine doğrular.
+      }
+    })();
+  }, [apply]);
 
   useEffect(() => {
     if (ready) save(state);
   }, [ready, state]);
 
-  const consumeCredit = useCallback(() => {
-    setState((s) => (s.isPro ? s : { ...s, credits: Math.max(0, s.credits - 1) }));
-  }, []);
+  const refresh = useCallback(async () => {
+    apply(await fetchWallet(state.deviceId));
+  }, [apply, state.deviceId]);
 
-  const buy = useCallback(async (productId: string) => {
-    const { product } = await purchases.purchase(productId);
-    setState((s) =>
-      product.kind === 'subscription'
-        ? { ...s, isPro: true, hasPaid: true }
-        : { ...s, credits: s.credits + (product.credits ?? 0), hasPaid: true },
-    );
-  }, []);
+  const buy = useCallback(
+    async (productId: string) => {
+      await purchases.purchase(productId);
+      apply(await syncPurchase(state.deviceId, productId));
+    },
+    [apply, state.deviceId],
+  );
 
   const restore = useCallback(async () => {
-    const { isPro } = await purchases.restore();
-    setState((s) => (isPro ? { ...s, isPro: true, hasPaid: true } : s));
-  }, []);
+    await purchases.restore();
+    apply(await syncPurchase(state.deviceId));
+  }, [apply, state.deviceId]);
 
   const value = useMemo<Wallet>(
     () => ({
       ...state,
       ready,
       canGenerate: state.isPro || state.credits > 0,
-      consumeCredit,
+      apply,
+      refresh,
       buy,
       restore,
     }),
-    [state, ready, consumeCredit, buy, restore],
+    [state, ready, apply, refresh, buy, restore],
   );
 
   return <WalletContext.Provider value={value}>{children}</WalletContext.Provider>;

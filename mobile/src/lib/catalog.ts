@@ -18,6 +18,7 @@ export interface Style {
   id: StyleId;
   name: string;
   prompt: string;
+  // Ödeme yapmamış kullanıcıya kapalı. Sunucudaki FREE_STYLES ile aynı olmalı.
   premium: boolean;
 }
 
@@ -94,10 +95,6 @@ export const PRODUCTS: Product[] = [
     credits: 50,
   },
 ];
-
-// Ücretsiz kullanıcıya verilen başlangıç kredisi. Bilerek düşük tutuldu:
-// "aha anı"nı yaşatıp hemen ödeme ekranına yönlendirmek hedefleniyor.
-export const FREE_CREDITS = 1;
 
 // İnsan iç mimar hizmeti (uygulama dışında tüketilen hizmet).
 export const DESIGNER_PACKAGES = [

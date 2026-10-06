@@ -4,7 +4,8 @@ import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-nati
 
 import { Button } from '../components/Button';
 import { track } from '../lib/analytics';
-import { PRODUCTS } from '../lib/catalog';
+import { PRODUCTS, type Product } from '../lib/catalog';
+import { isPurchaseCancelled, purchases } from '../lib/purchases';
 import { colors, radius, space } from '../lib/theme';
 import { useWallet } from '../lib/wallet';
 
@@ -12,7 +13,7 @@ const BENEFITS = [
   'Sınırsız oda tasarımı',
   '8 stilin tamamı (Japandi, Endüstriyel, Bohem…)',
   'Filigransız, yüksek çözünürlüklü indirme',
-  'Yeni stiller ilk Pro üyelere açılır',
+  'Abonelikleri istediğin zaman iptal edebilirsin',
 ];
 
 export default function Paywall() {
@@ -20,10 +21,16 @@ export default function Paywall() {
   const { trigger = 'direct' } = useLocalSearchParams<{ trigger?: string }>();
   const [selected, setSelected] = useState(PRODUCTS[0].id);
   const [loading, setLoading] = useState(false);
+  const [products, setProducts] = useState<Product[]>(PRODUCTS);
 
   useEffect(() => {
     track('paywall_viewed', { trigger });
   }, [trigger]);
+
+  useEffect(() => {
+    // Mağazadan yerel fiyatları al; başarısız olursa katalogdaki yedek fiyatlar kalır.
+    purchases.getProducts().then(setProducts).catch(() => {});
+  }, []);
 
   async function purchase() {
     setLoading(true);
@@ -33,10 +40,20 @@ export default function Paywall() {
       track('purchase_succeeded', { productId: selected, trigger });
       router.back();
     } catch (e) {
+      if (isPurchaseCancelled(e)) return;
       track('purchase_failed', { productId: selected });
       Alert.alert('Satın alma tamamlanamadı', e instanceof Error ? e.message : 'Lütfen tekrar deneyin.');
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function restore() {
+    try {
+      await wallet.restore();
+      Alert.alert('Geri yükleme tamamlandı', 'Satın alımların hesabına işlendi.');
+    } catch (e) {
+      Alert.alert('Geri yüklenemedi', e instanceof Error ? e.message : 'Lütfen tekrar deneyin.');
     }
   }
 
@@ -51,7 +68,7 @@ export default function Paywall() {
         ))}
       </View>
 
-      {PRODUCTS.map((p) => (
+      {products.map((p) => (
         <Pressable
           key={p.id}
           onPress={() => setSelected(p.id)}
@@ -69,7 +86,7 @@ export default function Paywall() {
       ))}
 
       <Button title="Devam et" onPress={purchase} loading={loading} />
-      <Pressable onPress={() => wallet.restore()}>
+      <Pressable onPress={restore}>
         <Text style={styles.restore}>Satın alımları geri yükle</Text>
       </Pressable>
       <Text style={styles.legal}>

@@ -7,7 +7,7 @@ import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Button } from '../components/Button';
 import { Chip } from '../components/Chip';
 import { track } from '../lib/analytics';
-import { redesignRoom } from '../lib/api';
+import { ApiError, redesignRoom } from '../lib/api';
 import { ROOMS, STYLES, type RoomId, type StyleId } from '../lib/catalog';
 import { setLastResult } from '../lib/session';
 import { colors, radius, space } from '../lib/theme';
@@ -61,28 +61,32 @@ export default function Create() {
   }
 
   async function generate() {
-    if (!photo) return;
     if (!wallet.canGenerate) {
       router.push({ pathname: '/paywall', params: { trigger: 'no_credits' } });
       return;
     }
+    if (!photo) return;
     setLoading(true);
     track('generate_started', { room, style });
     try {
-      const watermark = !wallet.hasPaid;
-      const { imageUrl } = await redesignRoom({
+      const res = await redesignRoom({
         imageBase64: photo.base64,
         mimeType: photo.mimeType,
         room,
         style,
         deviceId: wallet.deviceId,
-        watermark,
       });
-      wallet.consumeCredit();
-      setLastResult({ beforeUri: photo.uri, afterUrl: imageUrl, room, style, watermarked: watermark });
+      wallet.apply(res.wallet);
+      setLastResult({ beforeUri: photo.uri, afterUrl: res.imageUrl, room, style, watermarked: res.watermarked });
       track('generate_succeeded', { room, style });
       router.push('/result');
     } catch (e) {
+      if (e instanceof ApiError && e.needsPayment) {
+        // Yerel bakiye eskiyse sunucu son sözü söyler.
+        wallet.refresh().catch(() => {});
+        router.push({ pathname: '/paywall', params: { trigger: 'no_credits' } });
+        return;
+      }
       const message = e instanceof Error ? e.message : 'Bilinmeyen hata';
       track('generate_failed', { message });
       Alert.alert('Tasarım oluşturulamadı', message);
@@ -129,7 +133,8 @@ export default function Create() {
         title={wallet.canGenerate ? 'Tasarla ✨' : 'Tasarım hakkın bitti — Pro’ya geç'}
         onPress={generate}
         loading={loading}
-        disabled={!photo}
+        // Hak bittiyse fotoğraf olmadan da tıklanabilir: ödeme ekranına götürür.
+        disabled={!photo && wallet.canGenerate}
       />
       {loading && <Text style={styles.hint}>Yeni odan hazırlanıyor, bu 20–30 saniye sürebilir…</Text>}
     </ScrollView>
